@@ -1,30 +1,32 @@
 const express = require("express");
-const router = express.Router();
-const pool = require("../db/db"); // DB bağlantısı
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const pool = require("../db/db.js");
+
+const router = express.Router();
+
 
 // 📂 Resimlerin kaydedileceği klasör
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, "images/"); // Resimler "images" klasörüne kaydedilecek
-    },
-    filename: (req, file, cb) => {
-      cb(null, Date.now() + path.extname(file.originalname)); // Dosya adı: timestamp.jpg/png
-    },
+  destination: (req, file, cb) => {
+    cb(null, "images/"); // Resimler "images" klasörüne kaydedilecek
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Dosya adı: timestamp.jpg/png
+  },
 });
-  
-const upload = multer({ storage: storage });
+
+const upload = multer({ storage });
 
 // 📌 Bütün Ürünleri Getirme
 router.get("/getAllProduct", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM products");
-    return res.json(rows);
+    const result = await pool.query("SELECT * FROM products");
+    return res.json(result.rows);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Error retrieving products" });
+    return res.status(500).json({ message: "Ürünleri getirme hatası" });
   }
 });
 
@@ -32,25 +34,20 @@ router.get("/getAllProduct", async (req, res) => {
 router.post("/add", upload.single("image"), async (req, res) => {
   try {
     const { productsName, productsPrice } = req.body;
-    const imagePath = `/images/${req.file.filename}`; // Resmin yolu
+    const imagePath = `/images/${req.file.filename}`;
 
-    // Ürünü ekleyelim
-    const [result] = await pool.query(
-      "INSERT INTO products (productsName, productsPrice, productsImg) VALUES (?, ?, ?)",
+    const result = await pool.query(
+      "INSERT INTO products (productsName, productsPrice, productsImg) VALUES ($1, $2, $3) RETURNING *",
       [productsName, productsPrice, imagePath]
     );
 
-    if (result.affectedRows !== 0) {
-      return res.json({
-        message: "Ürün başarıyla eklendi",
-        imageUrl: imagePath,
-      });
-    } else {
-      return res.status(500).json({ message: "Error adding product" });
-    }
+    return res.json({
+      message: "Ürün başarıyla eklendi",
+      product: result.rows[0],
+    });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Error adding product" });
+    return res.status(500).json({ message: "Ürün ekleme hatası" });
   }
 });
 
@@ -60,44 +57,38 @@ router.post("/update/:id", upload.single("image"), async (req, res) => {
     const { productsName, productsPrice } = req.body;
     const productId = req.params.id;
 
-    // Önce ürünün eski resmini bulalım
-    const [oldProduct] = await pool.query("SELECT productsImg FROM products WHERE productsid = ?", [productId]);
-    if (oldProduct.length === 0) {
-      return res.status(404).json({ message: "Product not found" });
+    const oldProduct = await pool.query("SELECT productsImg FROM products WHERE productsid = $1", [productId]);
+    if (oldProduct.rows.length === 0) {
+      return res.status(404).json({ message: "Ürün bulunamadı" });
     }
 
-    let imagePath = oldProduct[0].productsImg;
+    let imagePath = oldProduct.rows[0].productsImg;
 
-    // Eğer yeni bir resim yüklendiyse
     if (req.file) {
       const newImagePath = `/images/${req.file.filename}`;
-      // Eski resmi sil
-      const oldImagePath = path.join(__dirname, '..', oldProduct[0].productsImg);
-      fs.unlink(oldImagePath, (err) => {
-        if (err) {
-          console.error("Error deleting old image:", err);
-        }
-      });
+      const oldImagePath = path.join(__dirname, "..", imagePath);
+
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlink(oldImagePath, (err) => {
+          if (err) console.error("Dosya silme hatası:", err);
+        });
+      }
+
       imagePath = newImagePath;
     }
 
-    // Ürünü güncelle
-    const [result] = await pool.query(
-      "UPDATE products SET productsName = ?, productsPrice = ?, productsImg = ? WHERE productsid = ?",
+    const result = await pool.query(
+      "UPDATE products SET productsName = $1, productsPrice = $2, productsImg = $3 WHERE productsid = $4 RETURNING *",
       [productsName, productsPrice, imagePath, productId]
     );
 
-    if (result.affectedRows !== 0) {
-      return res.json({
-        message: "Ürün başarıyla güncellendi",
-        imageUrl: imagePath,
-      });
-    } else {
-      return res.status(500).json({ message: "Error updating product" });
-    }
+    return res.json({
+      message: "Ürün başarıyla güncellendi",
+      product: result.rows[0],
+    });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Error updating product" });
+    return res.status(500).json({ message: "Ürün güncelleme hatası" });
   }
 });
 
@@ -105,34 +96,28 @@ router.post("/update/:id", upload.single("image"), async (req, res) => {
 router.post("/delete/:id", async (req, res) => {
   try {
     const productId = req.params.id;
-    if (!productId || productId === 'undefined') {
-      return res.status(400).json({ message: "Invalid product ID" });
+    if (!productId) return res.status(400).json({ message: "Geçersiz ürün ID" });
+
+    const product = await pool.query("SELECT productsImg FROM products WHERE productsid = $1", [productId]);
+    if (product.rows.length === 0) {
+      return res.status(404).json({ message: "Ürün bulunamadı" });
     }
 
-    // Önce ürünün resmini bulalım
-    const [rows] = await pool.query("SELECT productsImg FROM products WHERE productsid = ?", [productId]);
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Product not found" });
-    }
+    const imagePath = path.join(__dirname, "..", product.rows[0].productsImg);
 
-    const imagePath = path.join(__dirname, '..', rows[0].productsImg);
+    const result = await pool.query("DELETE FROM products WHERE productsid = $1 RETURNING *", [productId]);
+    if (result.rowCount === 0) return res.status(500).json({ message: "Ürün silme hatası" });
 
-    // Ürünü sil
-    const [result] = await pool.query("DELETE FROM products WHERE productsid = ?", [productId]);
-    if (result.affectedRows !== 0) {
-      // Resmi de sil
+    if (fs.existsSync(imagePath)) {
       fs.unlink(imagePath, (err) => {
-        if (err) {
-          console.error("Error deleting image:", err);
-        }
+        if (err) console.error("Dosya silme hatası:", err);
       });
-      return res.json({ message: "Ürün başarıyla silindi" });
-    } else {
-      return res.status(500).json({ message: "Error deleting product" });
     }
+
+    return res.json({ message: "Ürün başarıyla silindi" });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Error deleting product" });
+    return res.status(500).json({ message: "Ürün silme hatası" });
   }
 });
 

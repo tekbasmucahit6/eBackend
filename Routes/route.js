@@ -21,7 +21,7 @@ const upload = multer({ storage });
 // 📌 Bütün Ürünleri Getirme
 router.get("/getAllProduct", async (req, res) => {
   try {
-    const result = await pool.query('SELECT "ProductsName", "ProductsPrice", "ProductsImg" FROM products');
+    const result = await pool.query('SELECT "Productsid" ,"ProductsName", "ProductsPrice", "ProductsImg" FROM products');
     return res.json(result.rows);
   } catch (error) {
     console.error(error);

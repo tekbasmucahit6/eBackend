@@ -21,7 +21,7 @@ const upload = multer({ storage });
 // 📌 Bütün Ürünleri Getirme
 router.get("/getAllProduct", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM products");
+    const result = await pool.query('SELECT "ProductsName", "ProductsPrice", "ProductsImg" FROM products');
     return res.json(result.rows);
   } catch (error) {
     console.error(error);
@@ -36,7 +36,7 @@ router.post("/add", upload.single("image"), async (req, res) => {
     const imagePath = `/images/${req.file.filename}`;
 
     const result = await pool.query(
-      "INSERT INTO products (productsName, productsPrice, productsImg) VALUES ($1, $2, $3) RETURNING *",
+      'INSERT INTO products ("ProductsName", "ProductsPrice", "ProductsImg") VALUES ($1, $2, $3) RETURNING *',
       [productsName, productsPrice, imagePath]
     );
 
@@ -56,12 +56,12 @@ router.post("/update/:id", upload.single("image"), async (req, res) => {
     const { productsName, productsPrice } = req.body;
     const productId = req.params.id;
 
-    const oldProduct = await pool.query("SELECT productsImg FROM products WHERE productsid = $1", [productId]);
+    const oldProduct = await pool.query('SELECT "ProductsImg" FROM products WHERE "productsid" = $1', [productId]);
     if (oldProduct.rows.length === 0) {
       return res.status(404).json({ message: "Ürün bulunamadı" });
     }
 
-    let imagePath = oldProduct.rows[0].productsImg;
+    let imagePath = oldProduct.rows[0].ProductsImg;
 
     if (req.file) {
       const newImagePath = `/images/${req.file.filename}`;
@@ -77,7 +77,7 @@ router.post("/update/:id", upload.single("image"), async (req, res) => {
     }
 
     const result = await pool.query(
-      "UPDATE products SET productsName = $1, productsPrice = $2, productsImg = $3 WHERE productsid = $4 RETURNING *",
+      'UPDATE products SET "ProductsName" = $1, "ProductsPrice" = $2, "ProductsImg" = $3 WHERE "productsid" = $4 RETURNING *',
       [productsName, productsPrice, imagePath, productId]
     );
 
@@ -97,14 +97,14 @@ router.post("/delete/:id", async (req, res) => {
     const productId = req.params.id;
     if (!productId) return res.status(400).json({ message: "Geçersiz ürün ID" });
 
-    const product = await pool.query("SELECT productsImg FROM products WHERE productsid = $1", [productId]);
+    const product = await pool.query('SELECT "ProductsImg" FROM products WHERE "productsid" = $1', [productId]);
     if (product.rows.length === 0) {
       return res.status(404).json({ message: "Ürün bulunamadı" });
     }
 
-    const imagePath = path.join(__dirname, "..", product.rows[0].productsImg);
+    const imagePath = path.join(__dirname, "..", product.rows[0].ProductsImg);
 
-    const result = await pool.query("DELETE FROM products WHERE productsid = $1 RETURNING *", [productId]);
+    const result = await pool.query('DELETE FROM products WHERE "productsid" = $1 RETURNING *', [productId]);
     if (result.rowCount === 0) return res.status(500).json({ message: "Ürün silme hatası" });
 
     if (fs.existsSync(imagePath)) {

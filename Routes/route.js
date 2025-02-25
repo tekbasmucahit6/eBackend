@@ -6,7 +6,6 @@ const pool = require("../db/db.js");
 
 const router = express.Router();
 
-
 // 📂 Resimlerin kaydedileceği klasör
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -26,7 +25,7 @@ router.get("/getAllProduct", async (req, res) => {
     return res.json(result.rows);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Ürünleri getirme hatası" });
+    return res.status(500).json({ message: "Ürünler getirilirken bir hata oluştu" });
   }
 });
 
